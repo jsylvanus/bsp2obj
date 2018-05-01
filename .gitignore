@@ -1,0 +1,8 @@
+todo.md
+textures/*
+start.mtl
+start.obj
+start.bsp
+/bsp2obj
+/bsp2obj.dSYM
+*.o
