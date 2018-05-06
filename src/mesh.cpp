@@ -10,10 +10,64 @@ static mesh_v2 translate_texcoords(const mesh_v3* vtx, const texinfo_t* tinfo, c
 	};
 }
 
+static void pushBSPFace(const bspdata* bsp, const int faceid, const mesh_v3 origin, Mesh& mesh) {
+	texinfo_t tinfo = bsp->texInfos[bsp->faces[faceid].texinfo]; // fetch texture info
+	// if (tinfo.miptex == 7) continue; // gtfo sky
+
+	std::vector<dvertex_t> verts = bsp->getFaceVertices(faceid);
+	assert(verts.size() > 2);
+
+	int texidx = mesh.texLookup(tinfo.miptex);
+	if (texidx < 0) {
+		texidx = mesh.texInsert(tinfo.miptex, &bsp->miptexList[tinfo.miptex]);
+	}
+
+	// calculate surface normal & push one normal to be used for each vertex on this face
+	std::vector<int> points;
+	std::vector<int> tcs;
+	for (size_t i = 0; i < verts.size(); i++) {
+		mesh_v3 v = {verts[i].point[0], verts[i].point[1], verts[i].point[2]};
+		points.push_back(mesh.vertices.size());
+		mesh.vertices.push_back(v);
+		tcs.push_back(mesh.texcoords.size());
+		mesh.texcoords.push_back(translate_texcoords(&v, &tinfo, &bsp->miptexList[tinfo.miptex]));
+	}
+
+	mesh_v3 normal = -cross(
+		mesh.vertices[points[1]] - mesh.vertices[points[0]],
+		mesh.vertices[points[2]] - mesh.vertices[points[0]]
+	);
+	// assert(normal.nonZero());
+	int normal_idx = mesh.normals.size();
+	mesh.normals.push_back(normal);
+
+	for (auto p : points) mesh.vertices[p] += origin;
+
+	int maxV = verts.size() - 1;
+	for (int v = 1; v < maxV; v++) {
+		mesh.faces.push_back(mesh_face{
+			{points[0], points[v+1], points[v]},
+			{tcs[0], tcs[v+1], tcs[v]},
+			{normal_idx, normal_idx, normal_idx},
+			texidx
+		});
+
+		if (mesh.debug) {
+			printf("face added with points:\n  A: %f %f %f\n  B: %f %f %f\n  C: %f %f %f\n\n",
+				mesh.vertices[points[0]].x, mesh.vertices[points[0]].y, mesh.vertices[points[0]].z,
+				mesh.vertices[points[v+1]].x, mesh.vertices[points[v+1]].y, mesh.vertices[points[v+1]].z,
+				mesh.vertices[points[v]].x, mesh.vertices[points[v]].y, mesh.vertices[points[v]].z
+			);
+		}
+	} // triangles
+}
+
 Mesh Mesh::FromBSPData(bspdata* bsp)
 {
 	Mesh mesh;
 	std::vector<bool> faceflags(bsp->numFaces);
+
+	// level proper
 
 	for (int leaf = 0; leaf < bsp->numLeaves; leaf++) {
 		if (bsp->leaves[leaf].visofs < 0) continue; // apparently positive numbers = visible
@@ -26,48 +80,25 @@ Mesh Mesh::FromBSPData(bspdata* bsp)
 			if (faceflags[f]) continue;
 			faceflags[f] = true;
 
-			texinfo_t tinfo = bsp->texInfos[bsp->faces[f].texinfo]; // fetch texture info
-			// if (tinfo.miptex == 7) continue; // gtfo sky
-
-			std::vector<dvertex_t> verts = bsp->getFaceVertices(f);
-			assert(verts.size() > 2);
-
-			int texidx = mesh.texLookup(tinfo.miptex);
-			if (texidx < 0) {
-				texidx = mesh.texInsert(tinfo.miptex, &bsp->miptexList[tinfo.miptex]);
-			}
-
-			// calculate surface normal & push one normal to be used for each vertex on this face
-			std::vector<int> points;
-			std::vector<int> tcs;
-			for (size_t i = 0; i < verts.size(); i++) {
-				mesh_v3 v = {verts[i].point[0], verts[i].point[1], verts[i].point[2]};
-				points.push_back(mesh.vertices.size());
-				mesh.vertices.push_back(v);
-				tcs.push_back(mesh.texcoords.size());
-				mesh.texcoords.push_back(translate_texcoords(&v, &tinfo, &bsp->miptexList[tinfo.miptex]));
-			}
-
-			mesh_v3 normal = -cross(
-				mesh.vertices[points[1]] - mesh.vertices[points[0]],
-				mesh.vertices[points[2]] - mesh.vertices[points[0]]
-			);
-			// assert(normal.nonZero());
-			int normal_idx = mesh.normals.size();
-			mesh.normals.push_back(normal);
-
-			int maxV = verts.size() - 1;
-			for (int v = 1; v < maxV; v++) {
-
-				mesh.faces.push_back(mesh_face{
-					{points[0], points[v+1], points[v]},
-					{tcs[0], tcs[v+1], tcs[v]},
-					{normal_idx, normal_idx, normal_idx},
-					texidx
-				});
-			} // triangles
+			pushBSPFace(bsp, f, {0,0,0}, mesh);
 		} // marksurfaces
 	} // leaves
+
+	// models
+
+	for (int m = 1; m < bsp->numModels; m++) { // pretty sure model 0 is the world?
+		f32 *origin = bsp->models[m].origin;
+		for (int fl = 0; fl < bsp->models[m].numfaces; fl++) {
+			int flidx = bsp->models[m].firstface + fl;
+			int f = bsp->faceLists[flidx];
+
+			if (faceflags[f]) continue;
+			faceflags[f] = true;
+
+			mesh_v3 model_origin = { origin[0], origin[1], origin[2] };
+			pushBSPFace(bsp, f, model_origin, mesh);
+		}
+	}
 
 	return mesh;
 }
@@ -218,7 +249,7 @@ void Mesh::scale(const f32& s)
 	for (size_t i = 0; i < vertices.size(); i++) vertices[i] *= s;
 }
 
-void Mesh::getBoundingBox(mesh_v3* minp, mesh_v3* maxp)
+void Mesh::getBoundingBox(mesh_v3* minp, mesh_v3* maxp) const
 {
 	*minp = vertices[0];
 	*maxp = vertices[0];

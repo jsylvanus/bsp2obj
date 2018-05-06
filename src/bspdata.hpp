@@ -5,6 +5,7 @@
 #include <vector>
 #include "qbsp.h"
 #include "common.h"
+#include "entityparser.hpp"
 
 struct surfacemeta_t {
 	float texturemins[2];
@@ -16,6 +17,7 @@ public:
 	dheader_t header;
 
 	char* entities_raw;
+	EntityParser *ent_parser;
 
 	int numVertices;
 	dvertex_t *vertices;
@@ -48,23 +50,13 @@ public:
 	miptex_t* miptexList;
 	unsigned char** miptexData;
 
-	~bspdata() {
-		if (entities_raw != NULL) free(entities_raw);
-		if (miptexList != nullptr) free(miptexList);
-		if (vertices != NULL) free(vertices);
-		if (faces != NULL) free(faces);
-		if (faceLists != NULL) free(faceLists);
-		if (planes != NULL) free(planes);
-		if (edgeLists != NULL) free(edgeLists);
-		if (edges != NULL) free(edges);
-		if (texInfos != NULL) free(texInfos);
-		if (lightMaps != NULL) free(lightMaps);
-		if (leaves != NULL) free(leaves);
-	}
+	int numModels;
+	dmodel_t* models;
 
+	~bspdata();
 	void loadFromFilePointer(FILE *fp);
-	std::vector<dvertex_t> getFaceVertices(int faceid);
-	void extractTextures(const char* dirname);
+	std::vector<dvertex_t> getFaceVertices(int faceid) const;
+	void extractTextures(const char* dirname) const;
 };
 
 #endif

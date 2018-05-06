@@ -58,14 +58,16 @@ public:
 	void rotate(const f32 rad, const mesh_v3& axis);
 	void translate(const mesh_v3& translation);
 	void scale(const f32& s);
-	void getBoundingBox(mesh_v3* minp, mesh_v3* maxp);
+	void getBoundingBox(mesh_v3* minp, mesh_v3* maxp) const;
 
+	int texLookup(int miptex);
+	int texInsert(int miptex, const miptex_t* info);
+
+	bool debug = false;
 private:
 
 	std::map<int, int> miptex_to_texidx;
 
-	int texLookup(int miptex);
-	int texInsert(int miptex, const miptex_t* info);
 };
 
 #endif

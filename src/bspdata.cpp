@@ -15,7 +15,7 @@ void bspdata::loadFromFilePointer(FILE *fp) {
 	fseek(fp, header.lumps[LUMP_ENTITIES].fileofs, SEEK_SET);
 	fread(entities_raw, sizeof(char), header.lumps[LUMP_ENTITIES].filelen, fp);
 
-	// TODO: parse and extract lighting / camera data from entities
+	ent_parser = new EntityParser(entities_raw);
 
 	// load vertices
 	numVertices = header.lumps[LUMP_VERTEXES].filelen / sizeof(dvertex_t);
@@ -71,6 +71,15 @@ void bspdata::loadFromFilePointer(FILE *fp) {
 	fseek(fp, header.lumps[LUMP_LEAFS].fileofs, SEEK_SET);
 	fread(leaves, sizeof(dleaf_t), numLeaves, fp);
 
+	// load models
+	numModels = header.lumps[LUMP_MODELS].filelen / sizeof(dmodel_t);
+	models = (dmodel_t*)calloc(numModels, sizeof(dmodel_t));
+	fseek(fp, header.lumps[LUMP_MODELS].fileofs, SEEK_SET);
+	fread(models, sizeof(dmodel_t), numModels, fp);
+
+	// TODO: refactor this pattern to something like:
+	// readLumpStructs(LUMP_MODELS, sizeof(dmodel_t), &numModels, &models);
+
 	// read miptexListLen
 	fseek(fp, header.lumps[LUMP_TEXTURES].fileofs, SEEK_SET);
 	fread(&miptexListLen, sizeof(int), 1, fp);
@@ -95,7 +104,7 @@ void bspdata::loadFromFilePointer(FILE *fp) {
 
 }
 
-std::vector<dvertex_t> bspdata::getFaceVertices(int faceid) {
+std::vector<dvertex_t> bspdata::getFaceVertices(int faceid) const {
 	std::vector<dvertex_t> verts;
 	dface_t *face = faces + faceid;
 	for (int i = 0; i < face->numedges; i++) {
@@ -132,7 +141,7 @@ static void extractTexture(const char* path, const char* name, const int w, cons
 	buf.write(fixedname);
 }
 
-void bspdata::extractTextures(const char* dirname)
+void bspdata::extractTextures(const char* dirname) const
 {
 	for (int i = 0; i < miptexListLen; i++) {
 		int w = miptexList[i].width;
@@ -140,3 +149,25 @@ void bspdata::extractTextures(const char* dirname)
 		extractTexture(dirname, miptexList[i].name, w, h, miptexData[i]);
 	}
 }
+
+bspdata::~bspdata() {
+	if (entities_raw != NULL) free(entities_raw);
+	if (miptexList != nullptr) free(miptexList);
+	if (vertices != NULL) free(vertices);
+	if (faces != NULL) free(faces);
+	if (faceLists != NULL) free(faceLists);
+	if (planes != NULL) free(planes);
+	if (edgeLists != NULL) free(edgeLists);
+	if (edges != NULL) free(edges);
+	if (texInfos != NULL) free(texInfos);
+	if (lightMaps != NULL) free(lightMaps);
+	if (leaves != NULL) free(leaves);
+	if (models != NULL) free(models);
+	if (miptexData != NULL) {
+		for (int i = 0; i < miptexListLen; i++) {
+			if (miptexData[i] != NULL) free(miptexData[i]);
+		}
+		free(miptexData);
+	}
+}
+
