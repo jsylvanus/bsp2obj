@@ -15,6 +15,9 @@ void bspdata::loadFromFilePointer(FILE *fp) {
 	fseek(fp, header.lumps[LUMP_ENTITIES].fileofs, SEEK_SET);
 	fread(entities_raw, sizeof(char), header.lumps[LUMP_ENTITIES].filelen, fp);
 
+	// FILE* derp = fopen("entities.txt", "w");
+	// fputs(entities_raw, derp);
+	// fclose(derp);
 	ent_parser = new EntityParser(entities_raw);
 
 	// load vertices

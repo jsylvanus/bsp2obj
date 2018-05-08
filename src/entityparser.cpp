@@ -44,9 +44,66 @@ ent_property_t EntityParser::consumeProperty() {
 	ent_property_t prop;
 	consumeString(prop.name, PROPERTY_NAME_MAX_LEN);
 
-	// TODO: actually detect this and differntiate by type
-	prop.type = PropertyType::String;
-	consumeString(prop.string_value, STRING_VALUE_MAX_LEN);
+	if (
+		!strncmp("origin", prop.name, PROPERTY_NAME_MAX_LEN)
+		|| !strncmp("mangle", prop.name, PROPERTY_NAME_MAX_LEN)
+	) {
+		prop.type = PropertyType::Vector;
+		consume('"');
+		prop.vector_value[0] = consumeFloat();
+		prop.vector_value[1] = consumeFloat();
+		prop.vector_value[2] = consumeFloat();
+		consume('"');
+	}
+
+	else if (
+		!strncmp("model", prop.name, PROPERTY_NAME_MAX_LEN)
+	) {
+		prop.type = PropertyType::Pointer;
+		consume('"');
+		consume('*');
+		prop.pointer_value = consumeInteger();
+		consume('"');
+	}
+
+	else if (
+		!strncmp("target", prop.name, PROPERTY_NAME_MAX_LEN)
+		|| !strncmp("targetname", prop.name, PROPERTY_NAME_MAX_LEN)
+		|| !strncmp("killtarget", prop.name, PROPERTY_NAME_MAX_LEN)
+	) {
+		prop.type = PropertyType::Target;
+		consume('"');
+		consume('t');
+		prop.target_value = consumeInteger();
+		consume('"');
+	}
+
+	else if (
+		!strncmp("angle", prop.name, PROPERTY_NAME_MAX_LEN)
+		|| !strncmp("light", prop.name, PROPERTY_NAME_MAX_LEN)
+		|| !strncmp("spawnflags", prop.name, PROPERTY_NAME_MAX_LEN)
+		|| !strncmp("style", prop.name, PROPERTY_NAME_MAX_LEN)
+		|| !strncmp("speed", prop.name, PROPERTY_NAME_MAX_LEN)
+		|| !strncmp("wait", prop.name, PROPERTY_NAME_MAX_LEN)
+		|| !strncmp("lip", prop.name, PROPERTY_NAME_MAX_LEN)
+		|| !strncmp("dmg", prop.name, PROPERTY_NAME_MAX_LEN)
+		|| !strncmp("health", prop.name, PROPERTY_NAME_MAX_LEN)
+		|| !strncmp("delay", prop.name, PROPERTY_NAME_MAX_LEN)
+		|| !strncmp("sounds", prop.name, PROPERTY_NAME_MAX_LEN)
+		|| !strncmp("height", prop.name, PROPERTY_NAME_MAX_LEN)
+		|| !strncmp("worldtype", prop.name, PROPERTY_NAME_MAX_LEN)
+	) {
+		prop.type = PropertyType::Number;
+		consume('"');
+		prop.number_value = consumeInteger();
+		consume('"');
+	}
+
+	else
+	{
+		prop.type = PropertyType::String;
+		consumeString(prop.string_value, STRING_VALUE_MAX_LEN);
+	}
 
 	return prop;
 }
@@ -77,7 +134,7 @@ int EntityParser::consumeInteger() {
 }
 
 bool EntityParser::numeric(char t) {
-	return t == '.' || (t > 47 && t < 58);
+	return t == '.' || (t > 47 && t < 58) || t == '-' || t == '+';
 }
 
 float EntityParser::consumeFloat() {
@@ -87,6 +144,10 @@ float EntityParser::consumeFloat() {
 	int c = 0;
 	bool hasDecimal = false;
 	while (numeric(*cursor) && c < 79) {
+		if ((*cursor == '+' || *cursor == '-') && c > 0) {
+			cursor++;
+			continue;
+		}
 		if (*cursor == '.') {
 			if (hasDecimal) break;
 			hasDecimal = true;
