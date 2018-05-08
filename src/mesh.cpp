@@ -273,6 +273,7 @@ void Mesh::scale(const f32& s)
 		lights[l].x *= s;
 		lights[l].y *= s;
 		lights[l].z *= s;
+		lights[l].level *= s; // assumes level of "200" is "radius of 200 units until ineffective"
 	}
 }
 
