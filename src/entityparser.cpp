@@ -215,3 +215,21 @@ void EntityParser::parse() {
 	}
 }
 
+bool quake_entity_t::isTrigger() const {
+	auto p = getProperty("classname");
+	if (p != NULL) return 0 == strncmp("trigger", p->string_value, 7);
+	return false;
+}
+
+bool quake_entity_t::isFunc() const {
+	auto p = getProperty("classname");
+	if (p != NULL) return 0 == strncmp("func", p->string_value, 4);
+	return false;
+}
+
+bool quake_entity_t::isLight() const {
+	auto p = getProperty("classname");
+	if (p != NULL) return 0 == strncmp("light", p->string_value, 5);
+	return false;
+}
+
