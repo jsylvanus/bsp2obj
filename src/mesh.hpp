@@ -27,6 +27,11 @@ struct mesh_v3 {
 	}
 };
 
+struct mesh_light {
+	f32 x, y, z;
+	f32 level;
+};
+
 mesh_v3 cross(const mesh_v3& A, const mesh_v3& B);
 mesh_v3 v3min(const mesh_v3& a, const mesh_v3& b);
 mesh_v3 v3max(const mesh_v3& a, const mesh_v3& b);
@@ -49,6 +54,7 @@ public:
 	std::vector<mesh_v2> texcoords;
 	std::vector<mesh_mat> materials;
 	std::vector<std::string> textures;
+	std::vector<mesh_light> lights;
 
 	std::vector<mesh_face> faces;
 

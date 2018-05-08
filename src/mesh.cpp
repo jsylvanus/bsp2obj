@@ -62,41 +62,43 @@ static void pushBSPFace(const bspdata* bsp, const int faceid, const mesh_v3 orig
 	} // triangles
 }
 
+static void pushBSPModel(const bspdata* bsp, int m, Mesh& mesh, std::vector<bool>& faceflags) {
+	f32 *origin = bsp->models[m].origin;
+	for (int i = 0; i < bsp->models[m].numfaces; i++) {
+		int f = bsp->models[m].firstface + i;
+
+		if (faceflags[f]) continue;
+		faceflags[f] = true;
+
+		mesh_v3 model_origin = { origin[0], origin[1], origin[2] };
+		pushBSPFace(bsp, f, model_origin, mesh);
+	}
+}
+
 Mesh Mesh::FromBSPData(bspdata* bsp)
 {
 	Mesh mesh;
 	std::vector<bool> faceflags(bsp->numFaces);
 
-	// level proper
+	pushBSPModel(bsp, 0, mesh, faceflags); // this is the majority of the level
 
-	for (int leaf = 0; leaf < bsp->numLeaves; leaf++) {
-		if (bsp->leaves[leaf].visofs < 0) continue; // apparently positive numbers = visible
-
-		for (int fl = 0; fl < bsp->leaves[leaf].nummarksurfaces; fl++) {
-			int flidx = (int)(bsp->leaves[leaf].firstmarksurface + fl);
-			int f = bsp->faceLists[flidx];
-
-			// only add each face once
-			if (faceflags[f]) continue;
-			faceflags[f] = true;
-
-			pushBSPFace(bsp, f, {0,0,0}, mesh);
-		} // marksurfaces
-	} // leaves
-
-	// models
-
-	for (int m = 1; m < bsp->numModels; m++) { // pretty sure model 0 is the world?
-		f32 *origin = bsp->models[m].origin;
-		for (int fl = 0; fl < bsp->models[m].numfaces; fl++) {
-			int flidx = bsp->models[m].firstface + fl;
-			int f = bsp->faceLists[flidx];
-
-			if (faceflags[f]) continue;
-			faceflags[f] = true;
-
-			mesh_v3 model_origin = { origin[0], origin[1], origin[2] };
-			pushBSPFace(bsp, f, model_origin, mesh);
+	// then load only non-trigger models
+	// TODO: could add spawnflags support to remove DM-only and/or shareware stuff.
+	for (auto e : bsp->ent_parser->entities) {
+		if (e.isLight()) {
+			const ent_property_t *o = e.getProperty("origin");
+			if (o != NULL && o->type == PropertyType::Vector) {
+				const ent_property_t *p = e.getProperty("light");
+				int intensity = (p == NULL) ? 200 : p->number_value;
+				mesh.lights.push_back({
+					o->vector_value[0], o->vector_value[1], o->vector_value[2], (f32)intensity
+				});
+			}
+		} else if (!e.isTrigger()) {
+			const ent_property_t *p = e.getProperty("model");
+			if (p != NULL) {
+				pushBSPModel(bsp, p->pointer_value, mesh, faceflags);
+			}
 		}
 	}
 
@@ -150,6 +152,14 @@ void Mesh::writeOBJ(FILE *fp, FILE* mp, const char* mpname, const char* texdir)
 			f.vertex[2]+1, f.texcoord[2]+1, f.normal[2]+1
 		);
 	}
+
+	// We write lights as comments formateed #L x y z v for our own reference
+	fprintf(fp, "# lights (custom data)\n\n");
+	for (auto l: lights) {
+		fprintf(fp, "#L %f %f %f %f\n", l.x, l.y, l.z, l.level);
+	}
+	fprintf(fp, "\n\n");
+
 
 	// WRITE MAT FILE
 
@@ -237,16 +247,33 @@ void Mesh::rotate(const f32 rad, const mesh_v3& axis)
 	for (size_t i = 0; i < normals.size(); i++) { // normals too
 		normals[i] = transform(normals[i], m);
 	}
+	for (size_t i = 0; i < lights.size(); i++) { // normals too
+		mesh_v3 lpos = {lights[i].x, lights[i].y, lights[i].z};
+		lpos = transform(lpos, m);
+		lights[i].x = lpos.x;
+		lights[i].y = lpos.y;
+		lights[i].z = lpos.z;
+	}
 }
 
 void Mesh::translate(const mesh_v3& translation)
 {
 	for (size_t i = 0; i < vertices.size(); i++) vertices[i] += translation;
+	for (size_t l = 0; l < vertices.size(); l++) {
+		lights[l].x += translation.x;
+		lights[l].y += translation.y;
+		lights[l].z += translation.z;
+	}
 }
 
 void Mesh::scale(const f32& s)
 {
 	for (size_t i = 0; i < vertices.size(); i++) vertices[i] *= s;
+	for (size_t l = 0; l < vertices.size(); l++) {
+		lights[l].x *= s;
+		lights[l].y *= s;
+		lights[l].z *= s;
+	}
 }
 
 void Mesh::getBoundingBox(mesh_v3* minp, mesh_v3* maxp) const
