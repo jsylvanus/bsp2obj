@@ -60,6 +60,10 @@ struct quake_entity_t {
 		}
 		return NULL;
 	}
+
+	bool isTrigger() const;
+	bool isFunc() const;
+	bool isLight() const;
 };
 
 class EntityParser {
