@@ -1,6 +1,45 @@
 #include "mesh.hpp"
 #include "common.h"
 #include <math.h>
+#include <stdlib.h>
+#include <string.h>
+
+Mesh::Mesh() {
+	printf("mesh constructor called\n");
+	textures = (char**)malloc(maxTextures * sizeof(char*));
+	memset(textures, 0, sizeof(char*) * maxTextures);
+	assert(textures != NULL);
+	for (int t = 0; t < maxTextures; t++) {
+		textures[t] = NULL;
+		textures[t] = (char*)malloc(MAX_TEXTURE_NAME_LENGTH * sizeof(char));
+		assert(textures[t] != NULL);
+		// TODO: better than assert since it doesn't get compiled into production
+	}
+}
+
+Mesh::~Mesh() {
+	if (textures != NULL) {
+		for (int i = 0; i < maxTextures; i++) {
+			if (textures[i] != NULL) free(textures[i]);
+		}
+		free(textures);
+	}
+}
+
+Mesh::Mesh(Mesh&& other) {
+	printf("mesh move constructor called\n");
+	vertices = std::vector<mesh_v3>(std::move(other.vertices));
+	normals = std::vector<mesh_v3>(std::move(other.normals));
+	texcoords = std::vector<mesh_v2>(std::move(other.texcoords));
+	materials = std::vector<mesh_mat>(std::move(other.materials));
+	lights = std::vector<mesh_light>(std::move(other.lights));
+	faces = std::vector<mesh_face>(std::move(other.faces));
+	miptex_to_texidx = std::map<int, int>(std::move(other.miptex_to_texidx));
+
+	nTextures = other.nTextures; other.nTextures = 0;
+	maxTextures = other.maxTextures; other.maxTextures = MESH_DEFAULT_MAX_TEXTURES;
+	textures = other.textures; other.textures = NULL;
+}
 
 static mesh_v2 translate_texcoords(const mesh_v3* vtx, const texinfo_t* tinfo, const miptex_t* tex) {
 	// dot product of the texture's basis plus its offset
@@ -118,6 +157,10 @@ static std::string replaceChar(const std::string str, const char* subj, const ch
 void Mesh::writeOBJ(FILE *fp, FILE* mp, const char* mpname, const char* texdir)
 {
 	// WRITE OBJ FILE
+	assert(mpname != nullptr);
+	assert(texdir != nullptr);
+	assert(ferror(fp) == 0);
+	assert(ferror(mp) == 0);
 
 	fprintf(fp, "mtllib %s\n", mpname);
 
@@ -133,17 +176,22 @@ void Mesh::writeOBJ(FILE *fp, FILE* mp, const char* mpname, const char* texdir)
 
 	fprintf(fp, "# normals\n");
 	for (auto n: normals) {
+		n.normalize();
 		fprintf(fp, "vn %f %f %f\n", n.x, n.y, n.z);
 	}
 
+	for (int t = 0; t < nTextures; t++) {
+		printf("texture[%i] = \"%s\" (%p)\n", t, textures[t], textures[t]);
+	}
+
 	fprintf(fp, "# faces\n");
-	std::string lastmat = textures[faces[0].material];
+	char* lastmat = textures[faces[0].material];
 	// fprintf(fp, "usemtl DEBUG\n");
-	fprintf(fp, "usemtl %s\n", lastmat.c_str());
+	fprintf(fp, "usemtl %s\n", lastmat);
 	for (auto f: faces) {
 		if (textures[f.material] != lastmat) {
 			lastmat = textures[f.material];
-			fprintf(fp, "usemtl %s\n", lastmat.c_str());
+			fprintf(fp, "usemtl %s\n", lastmat);
 		}
 
 		fprintf(fp, "f %lli/%lli/%lli %lli/%lli/%lli %lli/%lli/%lli\n",
@@ -167,9 +215,10 @@ void Mesh::writeOBJ(FILE *fp, FILE* mp, const char* mpname, const char* texdir)
 	fprintf(mp, "Ka 1.0 1.0 1.0\nKd 1.0 1.0 1.0\nKs 0.0 0.0 0.0\n");
 	fprintf(mp, "d 1.0\nillum 2\n");
 
-	for (const auto m: textures) {
+	for (int t = 0; t < nTextures; t++) {
+		const auto m = textures[t];
 		std::string file_ok_name = replaceChar(m, "*", "_");
-		fprintf(mp, "newmtl %s\n", m.c_str());
+		fprintf(mp, "newmtl %s\n", m);
 		fprintf(mp, "Ka 1.0 1.0 1.0\nKd 1.0 1.0 1.0\nKs 0.0 0.0 0.0\n");
 		fprintf(mp, "d 1.0\nillum 2\n");
 		fprintf(mp, "map_Ka %s/%s.tga\n", texdir, file_ok_name.c_str());
@@ -188,11 +237,40 @@ int Mesh::texLookup(int miptex)
 	return -1;
 }
 
+bool Mesh::grow_texture_list() {
+	char** texlist = (char**)realloc(textures, sizeof(char*) * (maxTextures << 1));
+	if (texlist != NULL) {
+		size_t old_max = maxTextures;
+		textures = texlist;
+		maxTextures = maxTextures << 1;
+		for (int i = old_max; i < maxTextures; i++) {
+			textures[i] = NULL;
+			textures[i] = (char*)malloc(MAX_TEXTURE_NAME_LENGTH * sizeof(char));
+			memset(textures[i], 0, MAX_TEXTURE_NAME_LENGTH);
+			if (textures[i] == NULL) {
+				fprintf(stderr, "FAILED malloc of %i bytes at texture index %i.\n",
+						MAX_TEXTURE_NAME_LENGTH, i);
+			}
+		}
+	} else return false;
+	return true;
+}
+
 int Mesh::texInsert(int miptex, const miptex_t* info)
 {
-	int idx = textures.size();
+	assert(strlen(info->name) > 0);
+	assert(info != NULL);
+
+	int idx = nTextures;
+	if (idx >= maxTextures) {
+		grow_texture_list();
+	}
+
 	// textures/materials are basically the same thing right now
-	textures.push_back(std::string(info->name));
+	++nTextures;
+	strncpy(textures[idx], info->name, MAX_TEXTURE_NAME_LENGTH);
+	assert(strlen(textures[idx]) > 0);
+
 	materials.push_back(mesh_mat{idx});
 	miptex_to_texidx[miptex] = idx;
 	return idx;
@@ -259,7 +337,7 @@ void Mesh::rotate(const f32 rad, const mesh_v3& axis)
 void Mesh::translate(const mesh_v3& translation)
 {
 	for (size_t i = 0; i < vertices.size(); i++) vertices[i] += translation;
-	for (size_t l = 0; l < vertices.size(); l++) {
+	for (size_t l = 0; l < lights.size(); l++) {
 		lights[l].x += translation.x;
 		lights[l].y += translation.y;
 		lights[l].z += translation.z;
@@ -269,7 +347,7 @@ void Mesh::translate(const mesh_v3& translation)
 void Mesh::scale(const f32& s)
 {
 	for (size_t i = 0; i < vertices.size(); i++) vertices[i] *= s;
-	for (size_t l = 0; l < vertices.size(); l++) {
+	for (size_t l = 0; l < lights.size(); l++) {
 		lights[l].x *= s;
 		lights[l].y *= s;
 		lights[l].z *= s;

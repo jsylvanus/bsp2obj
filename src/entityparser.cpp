@@ -2,8 +2,9 @@
 
 EntityParser::EntityParser(const char* filecontents) {
 	size_t len = strlen(filecontents);
-	data = new char[len];
+	data = new char[len+1];
 	strncpy(data, filecontents, len);
+	data[len] = 0;
 	cursor = data;
 	parse();
 }
@@ -18,7 +19,13 @@ bool EntityParser::match(char t) {
 }
 
 void EntityParser::consumeWhitespace() {
-	while (*cursor == ' ' || *cursor == '\n' || *cursor == '\t' || *cursor == '\r') {
+	while (
+		*cursor != 0 &&
+			(*cursor == ' ' ||
+			*cursor == '\n' ||
+			*cursor == '\t' ||
+			*cursor == '\r')
+	) {
 		cursor++;
 	}
 }

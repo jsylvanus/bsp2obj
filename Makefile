@@ -1,5 +1,5 @@
 CC=clang++
-CFLAGS= -std=c++11 -g -O0 -Wall -Wextra -Werror -Wno-missing-field-initializers
+CFLAGS= -std=c++11 -g -O0 -Wall -Wextra -Werror -Wno-missing-field-initializers -fsanitize=address
 IFLAGS= 
 LFLAGS=
 

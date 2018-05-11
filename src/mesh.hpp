@@ -6,6 +6,10 @@
 #include <string>
 #include <map>
 #include "bspdata.hpp"
+#include <math.h>
+
+#define MAX_TEXTURE_NAME_LENGTH 80
+#define MESH_DEFAULT_MAX_TEXTURES 128
 
 struct mesh_v2 {
 	f32 x, y;
@@ -24,6 +28,13 @@ struct mesh_v3 {
 		return !(x - 0.001 < 0 && x + 0.001 > 0 &&
 				y - 0.001 < 0 && y + 0.001 > 0 &&
 				z - 0.001 < 0 && z + 0.001 > 0);
+	}
+
+	void normalize() {
+		f32 m = sqrtf(x * x + y * y + z * z);
+		x /= m;
+		y /= m;
+		z /= m;
 	}
 };
 
@@ -53,12 +64,20 @@ public:
 	std::vector<mesh_v3> normals;
 	std::vector<mesh_v2> texcoords;
 	std::vector<mesh_mat> materials;
-	std::vector<std::string> textures;
 	std::vector<mesh_light> lights;
-
 	std::vector<mesh_face> faces;
 
+	char** textures = NULL;
+	int nTextures = 0;
+	int maxTextures = MESH_DEFAULT_MAX_TEXTURES;
+	// std::vector<char*> textures;
+
 	static Mesh FromBSPData(bspdata* bsp);
+
+	Mesh();
+	~Mesh();
+	Mesh(const Mesh& other) = delete;
+	Mesh(Mesh&& other);
 
 	void writeOBJ(FILE* fp, FILE* mp, const char* mpname, const char* texdir);
 	void rotate(const f32 rad, const mesh_v3& axis);
@@ -73,6 +92,7 @@ public:
 private:
 
 	std::map<int, int> miptex_to_texidx;
+	bool grow_texture_list();
 
 };
 

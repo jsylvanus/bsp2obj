@@ -265,7 +265,12 @@ static pixel defaultPalette[256] = {
 };
 
 ImageBuffer::ImageBuffer(const int w, const int h, const unsigned char* data): imgw(w), imgh(h) {
-	buffer = new unsigned char[w * h * 4];
+	size_t bytelen = w * h * 4;
+	buffer = (unsigned char*)malloc(bytelen * sizeof(unsigned char));
+	if (buffer == nullptr) {
+		fprintf(stderr, "Couldn't allocate buffer of %lu bytes.\n", bytelen);
+		return;
+	}
 	for (int i = 0; i < w * h; i++) {
 		int ofs = i * 4;
 		auto p = defaultPalette[data[i]];
@@ -277,10 +282,14 @@ ImageBuffer::ImageBuffer(const int w, const int h, const unsigned char* data): i
 }
 
 ImageBuffer::~ImageBuffer() {
-	delete[] buffer;
+	if (buffer) free(buffer);
 }
 
 void ImageBuffer::write(std::string filename) {
+	if (buffer == nullptr) {
+		fprintf(stderr, "Attempted to write unallocated buffer.\n");
+		return;
+	}
 	//stbi_write_png(filename.c_str(), imgw, imgh, 4, (void*)buffer, 0);
 	int result = stbi_write_tga(filename.c_str(), imgw, imgh, 4, (void*)buffer);
 	if (result == 0) {

@@ -14,10 +14,8 @@ void bspdata::loadFromFilePointer(FILE *fp) {
 	entities_raw = (char*)calloc(header.lumps[LUMP_ENTITIES].filelen + 1, sizeof(char));
 	fseek(fp, header.lumps[LUMP_ENTITIES].fileofs, SEEK_SET);
 	fread(entities_raw, sizeof(char), header.lumps[LUMP_ENTITIES].filelen, fp);
+	entities_raw[header.lumps[LUMP_ENTITIES].filelen] = 0;
 
-	// FILE* derp = fopen("entities.txt", "w");
-	// fputs(entities_raw, derp);
-	// fclose(derp);
 	ent_parser = new EntityParser(entities_raw);
 
 	// load vertices
@@ -80,9 +78,6 @@ void bspdata::loadFromFilePointer(FILE *fp) {
 	fseek(fp, header.lumps[LUMP_MODELS].fileofs, SEEK_SET);
 	fread(models, sizeof(dmodel_t), numModels, fp);
 
-	// TODO: refactor this pattern to something like:
-	// readLumpStructs(LUMP_MODELS, sizeof(dmodel_t), &numModels, &models);
-
 	// read miptexListLen
 	fseek(fp, header.lumps[LUMP_TEXTURES].fileofs, SEEK_SET);
 	fread(&miptexListLen, sizeof(int), 1, fp);
@@ -104,7 +99,6 @@ void bspdata::loadFromFilePointer(FILE *fp) {
 
 	// reset file pointer to where it was
 	fseek(fp, pos, SEEK_SET);
-
 }
 
 std::vector<dvertex_t> bspdata::getFaceVertices(int faceid) const {
