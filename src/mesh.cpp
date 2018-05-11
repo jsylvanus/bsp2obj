@@ -325,7 +325,7 @@ void Mesh::rotate(const f32 rad, const mesh_v3& axis)
 	for (size_t i = 0; i < normals.size(); i++) { // normals too
 		normals[i] = transform(normals[i], m);
 	}
-	for (size_t i = 0; i < lights.size(); i++) { // normals too
+	for (size_t i = 0; i < lights.size(); i++) { // and lights
 		mesh_v3 lpos = {lights[i].x, lights[i].y, lights[i].z};
 		lpos = transform(lpos, m);
 		lights[i].x = lpos.x;
