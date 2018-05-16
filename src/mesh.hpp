@@ -22,12 +22,19 @@ struct mesh_v3 {
 	mesh_v3 operator*(const f32 s) const { return mesh_v3{ x * s, y * s, z * s }; }
 	mesh_v3& operator*=(const f32 v) { x *= v; y *= v; z *= v; return *this; }
 	mesh_v3& operator+=(const mesh_v3& v) { x += v.x; y += v.y; z += v.z; return *this; }
-	mesh_v3 operator-() const { return mesh_v3{ -x, -y, -z }; }
+	mesh_v3 operator-() const { return mesh_v3{ 0.0f-x, 0.0f-y, 0.0f-z }; }
 
 	bool nonZero() const {
 		return !(x - 0.001 < 0 && x + 0.001 > 0 &&
 				y - 0.001 < 0 && y + 0.001 > 0 &&
 				z - 0.001 < 0 && z + 0.001 > 0);
+	}
+
+	bool equiv(const mesh_v3& B, const f32 tolerance) const {
+		return
+			(x - tolerance < B.x) && (x + tolerance > B.x)
+			&& (y - tolerance < B.y) && (y + tolerance > B.y)
+			&& (z - tolerance < B.z) && (z + tolerance > B.z);
 	}
 
 	void normalize() {
@@ -36,6 +43,16 @@ struct mesh_v3 {
 		y /= m;
 		z /= m;
 	}
+
+	bool valid() const {
+		return
+			!isnan(x) && !isnan(y) && !isnan(z) &&
+			!isinf(x) && !isinf(y) && !isinf(z);
+	}
+
+	mesh_v3(f32 X, f32 Y, f32 Z) : x(X), y(Y), z(Z) { }
+	mesh_v3() : x(0), y(0), z(0) { }
+	mesh_v3(const dvertex_t& V) : x(V.point[0]), y(V.point[1]), z(V.point[2]) { }
 };
 
 struct mesh_light {
@@ -43,6 +60,16 @@ struct mesh_light {
 	f32 level;
 };
 
+f32 len(const mesh_v3& v) {
+	if (!v.valid()) return 0;
+	if (!v.nonZero()) return 0;
+	f32 sqlen = (v.x * v.x) + (v.y * v.y) + (v.z * v.z);
+	f32 len = sqrtf(sqlen);
+	return len;
+}
+
+bool colinear(const mesh_v3& A, const mesh_v3& B, const mesh_v3& C);
+f32 dot(const mesh_v3& A, const mesh_v3& B);
 mesh_v3 cross(const mesh_v3& A, const mesh_v3& B);
 mesh_v3 v3min(const mesh_v3& a, const mesh_v3& b);
 mesh_v3 v3max(const mesh_v3& a, const mesh_v3& b);

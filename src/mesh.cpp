@@ -5,7 +5,6 @@
 #include <string.h>
 
 Mesh::Mesh() {
-	printf("mesh constructor called\n");
 	textures = (char**)malloc(maxTextures * sizeof(char*));
 	memset(textures, 0, sizeof(char*) * maxTextures);
 	assert(textures != NULL);
@@ -27,7 +26,6 @@ Mesh::~Mesh() {
 }
 
 Mesh::Mesh(Mesh&& other) {
-	printf("mesh move constructor called\n");
 	vertices = std::vector<mesh_v3>(std::move(other.vertices));
 	normals = std::vector<mesh_v3>(std::move(other.normals));
 	texcoords = std::vector<mesh_v2>(std::move(other.texcoords));
@@ -36,6 +34,8 @@ Mesh::Mesh(Mesh&& other) {
 	faces = std::vector<mesh_face>(std::move(other.faces));
 	miptex_to_texidx = std::map<int, int>(std::move(other.miptex_to_texidx));
 
+	// NOTE: changing to this from a vector<string> was completely unnecessary but
+	// i like this style more anyway so eff it, it stays.
 	nTextures = other.nTextures; other.nTextures = 0;
 	maxTextures = other.maxTextures; other.maxTextures = MESH_DEFAULT_MAX_TEXTURES;
 	textures = other.textures; other.textures = NULL;
@@ -47,6 +47,54 @@ static mesh_v2 translate_texcoords(const mesh_v3* vtx, const texinfo_t* tinfo, c
 		(f32)((vtx->x * tinfo->vecs[0][0]) + (vtx->y * tinfo->vecs[0][1]) + (vtx->z * tinfo->vecs[0][2]) + (f32)tinfo->vecs[0][3]) / (f32)tex->width,
 		-(f32)((vtx->x * tinfo->vecs[1][0]) + (vtx->y * tinfo->vecs[1][1]) + (vtx->z * tinfo->vecs[1][2]) + (f32)tinfo->vecs[1][3]) / (f32)tex->height
 	};
+}
+
+struct error_all_points_same{ };
+struct error_all_points_colinear{ };
+struct error_normal_is_zero{int A,B,C;mesh_v3 n,Nn;};
+struct error_normal_is_invalid{int A,B,C;mesh_v3 n,Nn;};
+
+f32 dot(const mesh_v3& A, const mesh_v3& B) {
+	return A.x * B.x + A.y * B.y + A.z * B.z;
+}
+
+static bool fleq(const f32& a, const f32& b, const f32 tol = 0.0001) {
+	return (a - tol < b) && (a + tol > b);
+}
+
+bool colinear(const mesh_v3& A, const mesh_v3& B, const mesh_v3& C) {
+	mesh_v3 AB = B-A;
+	mesh_v3 BC = C-B;
+	mesh_v3 AC = C-A;
+	return fleq(len(AB) + len(BC), len(AC));
+}
+
+static mesh_v3 getFaceNormal(const std::vector<dvertex_t> &vertices) {
+	// rules:
+	// A is first point
+	// B cannot be equal-ish to A
+	// C cannot be colinear to A and B
+	assert(vertices.size() > 2);
+	mesh_v3 n;
+
+	int iB, iC;
+	mesh_v3 A, B, C;
+	A = vertices[0];
+	iB = 1;
+	while(A.equiv(vertices[iB], 0.001f) && iB < (int)vertices.size()) iB++;
+	if (iB >= (int)vertices.size()) throw error_all_points_same{};
+	B =  vertices[iB];
+	iC = iB + 1;
+	while(iC < (int)vertices.size() && colinear(A, B, vertices[iC])) iC++;
+	if (iC >= (int)vertices.size()) throw error_all_points_colinear{};
+	C = vertices[iC];
+
+	n = -cross(B-A, C-A);
+	mesh_v3 out = n;
+	out.normalize();
+	if (!n.nonZero()) throw error_normal_is_zero{0,iB,iC,n,out};
+	if (!n.valid()) throw error_normal_is_invalid{0,iB,iC,n,out};
+	return out;
 }
 
 static void pushBSPFace(const bspdata* bsp, const int faceid, const mesh_v3 origin, Mesh& mesh) {
@@ -72,11 +120,33 @@ static void pushBSPFace(const bspdata* bsp, const int faceid, const mesh_v3 orig
 		mesh.texcoords.push_back(translate_texcoords(&v, &tinfo, &bsp->miptexList[tinfo.miptex]));
 	}
 
-	mesh_v3 normal = -cross(
-		mesh.vertices[points[1]] - mesh.vertices[points[0]],
-		mesh.vertices[points[2]] - mesh.vertices[points[0]]
-	);
-	// assert(normal.nonZero());
+	mesh_v3 normal;
+	try {
+		normal = getFaceNormal(verts);
+	} catch (error_all_points_same e) {
+		fprintf(stderr, "Face #%i's vertices are all the same.\n", faceid);
+		for (auto v : verts) fprintf(stderr, "  {%f, %f, %f}\n", v.point[0], v.point[1], v.point[2]);
+		return;
+	} catch (error_all_points_colinear e) {
+		fprintf(stderr, "Face #%i's vertices are all colinear.\n", faceid);
+		for (auto v : verts) fprintf(stderr, "  {%f, %f, %f}\n", v.point[0], v.point[1], v.point[2]);
+		return;
+	} catch (error_normal_is_zero e) {
+		fprintf(stderr, "Face #%i's normal is zero.\n", faceid);
+		for (auto v : verts) fprintf(stderr, "  {%f, %f, %f}\n", v.point[0], v.point[1], v.point[2]);
+		fprintf(stderr, "  Selected indices: A=%i, B=%i, C=%i\n", e.A,e.B,e.C);
+		fprintf(stderr, "  calculated normal: {%f, %f, %f}\n", e.n.x, e.n.y, e.n.z);
+		fprintf(stderr, "  normalized: {%f, %f, %f}\n", e.Nn.x, e.Nn.y, e.Nn.z);
+		return;
+	} catch (error_normal_is_invalid e) {
+		fprintf(stderr, "Face #%i's normal is invalid.\n", faceid);
+		for (auto v : verts) fprintf(stderr, "  {%f, %f, %f}\n", v.point[0], v.point[1], v.point[2]);
+		fprintf(stderr, "  Selected indices: A=%i, B=%i, C=%i\n", e.A,e.B,e.C);
+		fprintf(stderr, "  calculated normal: {%f, %f, %f}\n", e.n.x, e.n.y, e.n.z);
+		fprintf(stderr, "  normalized: {%f, %f, %f}\n", e.Nn.x, e.Nn.y, e.Nn.z);
+		return;
+	}
+
 	int normal_idx = mesh.normals.size();
 	mesh.normals.push_back(normal);
 
@@ -178,10 +248,6 @@ void Mesh::writeOBJ(FILE *fp, FILE* mp, const char* mpname, const char* texdir)
 	for (auto n: normals) {
 		n.normalize();
 		fprintf(fp, "vn %f %f %f\n", n.x, n.y, n.z);
-	}
-
-	for (int t = 0; t < nTextures; t++) {
-		printf("texture[%i] = \"%s\" (%p)\n", t, textures[t], textures[t]);
 	}
 
 	fprintf(fp, "# faces\n");
